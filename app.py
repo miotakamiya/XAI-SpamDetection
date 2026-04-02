@@ -10,7 +10,7 @@ from lime.lime_text import LimeTextExplainer
 from sklearn.metrics import classification_report, confusion_matrix
 from wordcloud import WordCloud
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "models" / "best_model.joblib"
 VECTORIZER_PATH = BASE_DIR / "models" / "vectorizer.joblib"
 DATA_PATH = BASE_DIR / "data" / "clean_spam_dataset.csv"
