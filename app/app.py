@@ -294,11 +294,17 @@ sample_option = st.sidebar.selectbox(
     ]
 )
 
-if st.sidebar.button("Nạp ví dụ", use_container_width=True):
+def load_sample():
     if sample_option == "Tự nhập":
-        st.session_state.user_input = ""
+        st.session_state["user_input"] = ""
     else:
-        st.session_state.user_input = sample_option.split(": ", 1)[1]
+        st.session_state["user_input"] = sample_option.split(": ", 1)[1]
+
+st.sidebar.button(
+    "Nạp ví dụ",
+    use_container_width=True,
+    on_click=load_sample
+)
 
 st.sidebar.markdown("---")
 
@@ -655,14 +661,166 @@ with tab3:
             st.caption("Biểu đồ cho thấy mức độ ảnh hưởng của các đặc trưng văn bản đến dự đoán của mô hình.")
         except Exception as e:
             st.error(f"Lỗi khi vẽ SHAP: {e}")
+# =========================
+# ADVANCED XAI + POLISH (FINAL WEEK 4)
+# =========================
 
 st.markdown("---")
-st.markdown(
-    """
-### Gợi ý trình bày trong báo cáo
-- Dashboard cho thấy phân bố dữ liệu và đặc trưng văn bản
-- Tab Phân loại dùng để kiểm tra dự đoán trên từng email
-- Tab LIME giải thích cục bộ cho từng mẫu đầu vào
-- Tab SHAP giải thích tổng quan ở mức toàn cục
-"""
+st.markdown("## 🚀 Phân tích nâng cao & Trải nghiệm người dùng")
+
+# =========================
+# Highlight + Reasoning
+# =========================
+def highlight_text(text, words):
+    for w in words[:5]:
+        text = re.sub(rf"\b{w}\b", f"**{w}**", text)
+    return text
+
+def generate_reasoning(lime_words):
+    pos = [w for w, s in lime_words if s > 0]
+    neg = [w for w, s in lime_words if s < 0]
+
+    if not pos and not neg:
+        return "Không có từ nào ảnh hưởng mạnh đến dự đoán."
+
+    text = ""
+    if pos:
+        text += f"🔴 Từ mang xu hướng Spam: {', '.join(pos[:3])}. "
+    if neg:
+        text += f"🟢 Từ mang xu hướng Ham: {', '.join(neg[:3])}."
+    return text
+
+def spam_level(prob):
+    if prob >= 80:
+        return "🔴 RẤT NGUY HIỂM"
+    elif prob >= 60:
+        return "🟠 NGHI NGỜ CAO"
+    elif prob >= 40:
+        return "🟡 TRUNG BÌNH"
+    else:
+        return "🟢 AN TOÀN"
+
+# =========================
+# SHOW ADVANCED RESULT (sau khi predict)
+# =========================
+if st.session_state.user_input.strip():
+
+    st.markdown("### 🧠 Phân tích nâng cao nội dung")
+
+    try:
+        clean_text, _, prediction, probs = predict_text(
+            st.session_state.user_input,
+            model,
+            vectorizer
+        )
+
+        if probs is not None:
+            spam_prob = float(probs[1]) * 100
+
+            # 🚨 Risk level
+            st.markdown(f"### 🚨 Mức độ rủi ro: {spam_level(spam_prob)}")
+
+        # =========================
+        # LIME ADVANCED VIEW
+        # =========================
+        if hasattr(model, "predict_proba"):
+
+            with st.spinner("Đang phân tích LIME nâng cao..."):
+                explanation = explain_with_lime(
+                    text=clean_text,
+                    model=model,
+                    vectorizer=vectorizer,
+                    num_features=10
+                )
+
+                lime_words = explanation.as_list(label=int(prediction))
+
+                col1, col2 = st.columns([1.2, 1])
+
+                with col1:
+                    st.markdown("### 📊 Biểu đồ giải thích (LIME)")
+                    fig = explanation.as_pyplot_figure(label=int(prediction))
+                    st.pyplot(fig)
+                    plt.clf()
+
+                with col2:
+                    st.markdown("### 🔝 Từ quan trọng")
+                    lime_df = pd.DataFrame(lime_words, columns=["Từ", "Ảnh hưởng"])
+                    st.dataframe(lime_df, use_container_width=True)
+
+                # =========================
+                # Human explanation
+                # =========================
+                st.markdown("### 🧠 Giải thích dễ hiểu")
+                st.info(generate_reasoning(lime_words))
+
+                # =========================
+                # Highlight text
+                # =========================
+                st.markdown("### 🔍 Highlight từ quan trọng")
+                highlighted = highlight_text(clean_text, [w[0] for w in lime_words])
+                st.markdown(highlighted)
+
+    except Exception as e:
+        st.warning(f"Không thể chạy phân tích nâng cao: {e}")
+
+# =========================
+# GLOBAL MODEL INSIGHT
+# =========================
+st.markdown("---")
+st.markdown("## 📊 Insight toàn cục của mô hình")
+
+if hasattr(model, "coef_"):
+
+    feature_names = vectorizer.get_feature_names_out()
+    coefs = model.coef_[0]
+
+    top_spam = sorted(zip(feature_names, coefs), key=lambda x: x[1], reverse=True)[:10]
+    top_ham = sorted(zip(feature_names, coefs), key=lambda x: x[1])[:10]
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("### 🔥 Top từ Spam mạnh nhất")
+        st.dataframe(pd.DataFrame(top_spam, columns=["Từ", "Trọng số"]), use_container_width=True)
+
+    with col2:
+        st.markdown("### 🟢 Top từ Ham mạnh nhất")
+        st.dataframe(pd.DataFrame(top_ham, columns=["Từ", "Trọng số"]), use_container_width=True)
+
+# =========================
+# UX IMPROVEMENT
+# =========================
+st.markdown("---")
+st.markdown("## ⚙️ Công cụ hỗ trợ")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    def clear_input():
+        st.session_state["user_input"] = ""
+
+    st.button(
+        "🧹 Xóa nội dung",
+        use_container_width=True,
+        on_click=clear_input
+    )
+
+with col2:
+    def load_random():
+        st.session_state["user_input"] = df.sample(1)[text_col].values[0]
+
+    st.button(
+        "🎲 Random sample",
+        use_container_width=True,
+        on_click=load_random
+    )
+
+# =========================
+# FOOTER
+# =========================
+st.markdown("---")
+st.caption(
+    "📌 Hệ thống Spam Detection sử dụng Machine Learning kết hợp Explainable AI (LIME, SHAP) "
+    "giúp người dùng hiểu rõ quyết định của mô hình."
 )
